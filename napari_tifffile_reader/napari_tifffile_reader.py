@@ -57,13 +57,33 @@ def reader_function(path: PathLike) -> List[LayerData]:
         try:
             if tif.is_imagej:
                 layerdata = imagej_reader(tif)
+            elif tif.is_scanimage:
+                layerdata = scanimage_reader(tif)
             else:
                 layerdata = tifffile_reader(tif)
+
         except Exception as exc:
             # fallback to imagecodecs
             log_warning(f'tifffile: {exc}')
             layerdata = imagecodecs_reader(path)
     return layerdata
+
+
+def scanimage_reader(tif):
+    out = tifffile_reader(tif)
+    data = out[0][0]
+    kwargs = out[0][1]
+    name = out[0][2]
+
+    nb_slices = tif.scanimage_metadata['FrameData']['SI.hStackManager.numSlices']
+    if nb_slices>0:
+        z_stepsize = tif.scanimage_metadata['FrameData']['SI.hStackManager.stackZStepSize']
+        data = data.reshape((-1, nb_slices, *data.shape[1:]))   # (Z*T)CXY -> ZTCXY
+        kwargs['channel_axis'] = 2
+        kwargs['name'] = ['GCaMP', 'tdTomato']
+        kwargs['colormap'] = ['green', 'red']
+        kwargs['scale'] = (1, z_stepsize, 1, 1)
+    return [(data, kwargs, name)]
 
 
 def zip_reader(path: PathLike) -> List[LayerData]:
